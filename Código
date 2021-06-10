@@ -100,7 +100,9 @@ with torch.no_grad():
     acc = 100.0 * n_correct / n_samples
     print(f'Nb of samples = {n_samples}, nb of correctly predicted = {n_correct}')
     print(f'Accuracy of the network on train examples: {acc} %')
-
+    n_correct = 0
+    n_samples = 0
+    
     for images, labels in test_dataloader:
         images = images.cuda()
         labels = labels.cuda()
