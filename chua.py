@@ -15,7 +15,8 @@ def main():
 
         print(f'{k}:')
         chua_integrator(diagram, n_attractors, regular_axis, 'regular', base_path='ExportChua/regular')
-        chua_integrator(diagram, n_attractors, chaotic_axis, 'caotico', base_path='ExportChua/caotico')
+        chua_integrator(diagram, n_attractors, chaotic_axis, 'caotico', base_path='ExportChua/caotico',
+                        save_image=True, save_diagram=True, save_points=True)
 
 
 if __name__ == '__main__':

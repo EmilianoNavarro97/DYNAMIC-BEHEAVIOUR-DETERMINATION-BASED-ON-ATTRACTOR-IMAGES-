@@ -234,3 +234,28 @@ def chua_integrator(diagram_data: Diagram, n_attractors: int, axis_ranges: List[
                       save_points, save_diagram, save_image)
 
             num += 1
+
+
+def plot(α: float, β: float, γ: float,
+         a: float, b: float, k: float,
+         init_cond: List[float], row: int, col: int,
+         lyapunov: float, base_path=None):
+    n_steps, transient_drop = transient(1)
+
+    points = rk_solver(a, b, k, α, β, γ,
+                       init_cond[0], init_cond[1], init_cond[2], n_steps, transient_drop)
+
+    # elevation, azimuth = np.random.randint(0, 360, (2,))
+    elevation, azimuth = 45, 45
+
+    ax = plt.axes(projection='3d')
+
+    ax.plot3D(points[:, 0], points[:, 1], points[:, 2], 'black', linewidth=0.5)
+    ax.set_axis_off()
+    ax.view_init(elev=elevation, azim=azimuth)
+
+    if base_path:
+        plt.savefig(f'{base_path}/{row}_{col}.png', bbox_inches='tight')
+        plt.close()
+    else:
+        plt.show()
