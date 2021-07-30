@@ -1,5 +1,4 @@
 import os
-
 from functions import plot
 import numpy as np
 from tqdm import tqdm
@@ -19,11 +18,10 @@ def main():
     if not os.path.isdir('FigImages'):
         os.makedirs('FigImages')
 
-    # for i in range(lyapunov_exp_mat.shape[0]):
-    for i in range(1):
+    for i in range(lyapunov_exp_mat.shape[0]):
         for j in tqdm(range(lyapunov_exp_mat.shape[1])):
             α, γ = alpha_gamma_mat[i, j]
-            plot(α, β, γ, a, b, k, init_cond, i, j, lyapunov_exp_mat[i, j], base_path='FigImages')
+            plot(α, β, γ, a, b, k, init_cond, i, j, base_path='FigImages')
 
 
 if __name__ == '__main__':
