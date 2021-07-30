@@ -25,10 +25,11 @@ def main():
         os.makedirs('FigImages')
 
     row_start = 600
-    row_end = lyapunov_exp_mat.shape[0]
+    row_end = lyapunov_exp_mat.shape[1]
 
     for i in range(row_start, row_end):
-        Parallel(n_jobs=8)(
+        print(f'{i}:')
+        Parallel(n_jobs=12)(
             delayed(iteration)(β, a, b, k, init_cond, alpha_gamma_mat, i, j)
             for j in tqdm(range(lyapunov_exp_mat.shape[1])))
 
