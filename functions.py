@@ -1,0 +1,236 @@
+import os
+from typing import Tuple, Union, List, TypedDict
+from numba import njit
+import numpy as np
+from pickle import dump
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+
+
+@njit
+def transient(proximity: int, additive=300_000, scale=100_000) -> Tuple[int, int]:
+    """
+    Calculates the number of integration steps given the proximity to
+    a bifurcation
+    :param proximity: proximity to a bifurcation point between 1 and 10
+    :param additive: additive term for the calculation
+    :param scale: scale term for the calculation
+    :returns n: number of integration steps
+             t: number of transient steps to drop before considering a valid path
+    :raise ValueError if proximity is not in range
+    """
+    if not (1 <= proximity <= 10):
+        raise ValueError('Proximity out of range')
+
+    n = additive + proximity * scale
+    t = round(n*0.4)
+
+    return n, t
+
+
+@njit
+def f(a: float, b: float, x: float) -> float:
+    """
+    Piecewise linear function
+    :param a: function variable
+    :param b: function variable
+    :param x: function variable
+    :return: evaluated function
+    """
+    return b*x + 0.5*(a-b)*(abs(x+1) - abs(x-1))
+
+
+@njit
+def dx_dt(a: float, b: float, k: float, α: float, x: float, y: float) -> float:
+    """
+    Derivative of the x coordinate wrt time
+    :param a: function variable
+    :param b: function variable
+    :param k: function variable
+    :param α: function variable
+    :param x: function variable
+    :param y: function variable
+    :return: derivative evaluation
+    """
+    return k*α*(y - x - f(a, b, x))
+
+
+@njit
+def dy_dt(k: float, x: float, y: float, z: float) -> float:
+    """
+    Derivative of the y coordinate wrt time
+    :param k: function variable
+    :param x: function variable
+    :param y: function variable
+    :param z: function variable
+    :return: derivative evaluation
+    """
+    return k*(x - y + z)
+
+
+@njit
+def dz_dt(k: float, β: float, γ: float, y: float, z: float) -> float:
+    """
+    Derivative of the z coordinate wrt time
+    :param k: function variable
+    :param β: function variable
+    :param γ: function variable
+    :param y: function variable
+    :param z: function variable
+    :return: derivative evaluation
+    """
+    return -k*(β*y + γ*z)
+
+
+@njit
+def rk_solver(a: float, b: float, k: float,
+              α: float, β: float, γ: float,
+              x: float, y: float, z: float,
+              n_steps: int, transient_drop: int, h=0.001) -> np.ndarray:
+    """
+    :param a: function variable
+    :param b: function variable
+    :param k: function variable
+    :param α: function variable
+    :param β: function variable
+    :param γ: function variable
+    :param x: function variable
+    :param y: function variable
+    :param z: function variable
+    :param n_steps: number of integration steps
+    :param transient_drop: number of steps from t=0 to drop
+    :param h: infinitesimal integration step size
+    :return: numpy array with shape (n_steps, 3) containing the integrated path
+    """
+    trajectory = np.empty((n_steps - transient_drop, 3), dtype=np.float32)
+
+    idx = 0
+    for t in range(1, n_steps + 1):
+        k1 = dx_dt(a, b, k, α, x, y)
+        k2 = dx_dt(a, b, k, α, x + 0.5 * k1 * h, y)
+        k3 = dx_dt(a, b, k, α, x + 0.5 * k2 * h, y)
+        k4 = dx_dt(a, b, k, α, x + k3 * h, y)
+        px = x + 1 / 6 * (k1 + 2 * k2 + 2 * k3 + k4) * h
+
+        k1 = dy_dt(k, x, y, z)
+        k2 = dy_dt(k, x, y + 0.5 * k1 * h, z)
+        k3 = dy_dt(k, x, y + 0.5 * k2 * h, z)
+        k4 = dy_dt(k, x, y + k3 * h, z)
+        py = y + 1 / 6 * (k1 + 2 * k2 + 2 * k3 + k4) * h
+
+        k1 = dz_dt(k, β, γ, y, z)
+        k2 = dz_dt(k, β, γ, y, z + 0.5 * k1 * h)
+        k3 = dz_dt(k, β, γ, y, z + 0.5 * k2 * h)
+        k4 = dz_dt(k, β, γ, y, z + k3 * h)
+        pz = z + 1 / 6 * (k1 + 2 * k2 + 2 * k3 + k4) * h
+
+        if t > transient_drop:
+            trajectory[idx, 0] = px
+            trajectory[idx, 1] = py
+            trajectory[idx, 2] = pz
+            idx += 1
+
+        x, y, z = px, py, pz
+
+    return trajectory
+
+
+class Diagram(TypedDict):
+    bifurcation: str
+    alpha: float
+    beta: float
+    gamma: float
+    a: float
+    b: float
+    k: float
+    initial_condition: List[float]
+    axis: str
+
+
+class AxisRange(TypedDict):
+    start: float
+    end: float
+    proximity: int
+
+
+def save_data(base_path: str, diagram_data: Union[Diagram, None],
+              label: str, points: np.ndarray, num: int,
+              save_points=True, save_diagram=True, save_image=True):
+    name = f"Chua_{diagram_data['bifurcation']}_{label}_{num}"
+
+    if save_points:
+        if not os.path.isdir(f'{base_path}/arrays'):
+            os.makedirs(f'{base_path}/arrays')
+        # Save numpy array
+        np.save(f'{base_path}/arrays/{name}.npy', points)
+
+    if save_diagram:
+        if not os.path.isdir(f'{base_path}/data'):
+            os.makedirs(f'{base_path}/data')
+        # Save data
+        with open(f'{base_path}/data/{name}.dat', 'wb') as f:
+            dump(diagram_data, f)
+
+    if save_image:
+        if not os.path.isdir(f'{base_path}/images'):
+            os.makedirs(f'{base_path}/images')
+        # Save image
+        elevation, azimuth = 45, 45
+        ax = plt.axes(projection='3d')
+
+        ax.plot3D(points[:, 0], points[:, 1], points[:, 2], 'black', linewidth=0.5)
+        ax.set_axis_off()
+        ax.view_init(elev=elevation, azim=azimuth)
+        plt.savefig(f'{base_path}/images/{name}.png', bbox_inches='tight')
+        plt.close()
+
+
+def chua_integrator(diagram_data: Diagram, n_attractors: int, axis_ranges: List[AxisRange],
+                    label: str, base_path='',
+                    save_points=True, save_diagram=True, save_image=True):
+    """
+    :param diagram_data: dictionary with control parameters similar to:
+                         "bifurcation": "B",
+                         "alpha": -1.5590535687,
+                         "beta": 0.0156453845,
+                         "gamma": 999999999999,
+                         "a": -0.2438532907,
+                         "b": -0.0425189943,
+                         "k": -1,
+                         "initial_condition": [0.00, 0.00, 0.20],
+                         "axis": "gamma"
+                        where "axis" indicate which axis we have to vary,
+                        and that varying axis is marked with 999999999999
+    :param n_attractors: number of attractors to generate for each range
+    :param axis_ranges: a list of ranges, each range is a dictionary like:
+                         "start": -0.07, "end": -0.04, "proximity": 6
+    :param label: caotico o regular
+    :param base_path: path where the file will be saved
+    :param save_points: whether to save or not the points
+    :param save_diagram: whether to save or not the diagram data
+    :param save_image: whether to save or not the images
+    :return:
+    """
+    num = 1
+    axis_name = diagram_data["axis"]
+    for axis_range in axis_ranges:
+
+        # calculates step size to calculate values of the varying parameter between the range
+        step = (axis_range["end"] - axis_range["start"]) / n_attractors
+
+        for i in tqdm(range(n_attractors)):
+            # set value to variable axis parameter
+            diagram_data[axis_name] = axis_range["start"] + i * step
+
+            init_cond = diagram_data["initial_condition"]
+
+            n_steps, transient_drop = transient(axis_range["proximity"])
+
+            points = rk_solver(diagram_data["a"], diagram_data["b"], diagram_data["k"],
+                               diagram_data["alpha"], diagram_data["beta"], diagram_data["gamma"],
+                               init_cond[0], init_cond[1], init_cond[2], n_steps, transient_drop)
+
+            save_data(base_path, diagram_data, label, points, num,
+                      save_points, save_diagram, save_image)
+
+            num += 1
