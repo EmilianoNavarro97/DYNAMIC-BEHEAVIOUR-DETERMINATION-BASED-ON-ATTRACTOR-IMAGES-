@@ -83,7 +83,7 @@ def dz_dt(k: float, β: float, γ: float, y: float, z: float) -> float:
 
 
 @njit
-def rk_solver(a: float, b: float, k: float,
+def rk_solver_bad(a: float, b: float, k: float,
               α: float, β: float, γ: float,
               x: float, y: float, z: float,
               n_steps: int, transient_drop: int, h=0.001) -> np.ndarray:
@@ -123,6 +123,46 @@ def rk_solver(a: float, b: float, k: float,
         k3 = dz_dt(k, β, γ, y, z + 0.5 * k2 * h)
         k4 = dz_dt(k, β, γ, y, z + k3 * h)
         pz = z + 1 / 6 * (k1 + 2 * k2 + 2 * k3 + k4) * h
+
+        if t > transient_drop:
+            trajectory[idx, 0] = px
+            trajectory[idx, 1] = py
+            trajectory[idx, 2] = pz
+            idx += 1
+
+        x, y, z = px, py, pz
+
+    return trajectory
+    
+    
+@njit
+def rk_solver(a: float, b: float, k: float,
+              α: float, β: float, γ: float,
+              x: float, y: float, z: float,
+              n_steps: int, transient_drop: int, h=0.001) -> np.ndarray:
+    trajectory = np.empty((n_steps - transient_drop, 3), dtype=np.float32)
+
+    idx = 0
+    for t in range(1, n_steps + 1):
+        k1 = dx_dt(a, b, k, α, x, y)
+        l1 = dy_dt(k, x, y, z)
+        m1 = dz_dt(k, β, γ, y, z)
+        
+        k2 = dx_dt(a, b, k, α, x + 0.5 * h * k1, y + 0.5 * h * l1)
+        l2 = dy_dt(k, x + 0.5 * h * k1, y + 0.5 * h * l1, z + 0.5 * h * m1)
+        m2 = dz_dt(k, β, γ, y + 0.5 * h * l1, z + 0.5 * h * m1)
+        
+        k3 = dx_dt(a, b, k, α, x + 0.5 * h * k2, y + 0.5 * h * l2)
+        l3 = dy_dt(k, x + 0.5 * h * k2, y + 0.5 * h * l2, z + 0.5 * h * m2)
+        m3 = dz_dt(k, β, γ, y + 0.5 * h * l2, z + 0.5 * h * m2)
+        
+        k4 = dx_dt(a, b, k, α, x + h * k3, y + h * l3)
+        l4 = dy_dt(k, x + h * k3, y + h * l3, z + h * m3)
+        m4 = dz_dt(k, β, γ, y + h * l3, z + h * m3)
+        
+        px = x + 1 / 6 * (k1 + 2 * k2 + 2 * k3 + k4) * h
+        py = y + 1 / 6 * (l1 + 2 * l2 + 2 * l3 + l4) * h
+        pz = z + 1 / 6 * (m1 + 2 * m2 + 2 * m3 + m4) * h
 
         if t > transient_drop:
             trajectory[idx, 0] = px
