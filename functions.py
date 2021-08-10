@@ -5,6 +5,7 @@ import numpy as np
 from pickle import dump
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+# import mayavi.mlab as mlab
 
 
 @njit
@@ -83,59 +84,6 @@ def dz_dt(k: float, β: float, γ: float, y: float, z: float) -> float:
 
 
 @njit
-def rk_solver_bad(a: float, b: float, k: float,
-              α: float, β: float, γ: float,
-              x: float, y: float, z: float,
-              n_steps: int, transient_drop: int, h=0.001) -> np.ndarray:
-    """
-    :param a: function variable
-    :param b: function variable
-    :param k: function variable
-    :param α: function variable
-    :param β: function variable
-    :param γ: function variable
-    :param x: function variable
-    :param y: function variable
-    :param z: function variable
-    :param n_steps: number of integration steps
-    :param transient_drop: number of steps from t=0 to drop
-    :param h: infinitesimal integration step size
-    :return: numpy array with shape (n_steps, 3) containing the integrated path
-    """
-    trajectory = np.empty((n_steps - transient_drop, 3), dtype=np.float32)
-
-    idx = 0
-    for t in range(1, n_steps + 1):
-        k1 = dx_dt(a, b, k, α, x, y)
-        k2 = dx_dt(a, b, k, α, x + 0.5 * k1 * h, y)
-        k3 = dx_dt(a, b, k, α, x + 0.5 * k2 * h, y)
-        k4 = dx_dt(a, b, k, α, x + k3 * h, y)
-        px = x + 1 / 6 * (k1 + 2 * k2 + 2 * k3 + k4) * h
-
-        k1 = dy_dt(k, x, y, z)
-        k2 = dy_dt(k, x, y + 0.5 * k1 * h, z)
-        k3 = dy_dt(k, x, y + 0.5 * k2 * h, z)
-        k4 = dy_dt(k, x, y + k3 * h, z)
-        py = y + 1 / 6 * (k1 + 2 * k2 + 2 * k3 + k4) * h
-
-        k1 = dz_dt(k, β, γ, y, z)
-        k2 = dz_dt(k, β, γ, y, z + 0.5 * k1 * h)
-        k3 = dz_dt(k, β, γ, y, z + 0.5 * k2 * h)
-        k4 = dz_dt(k, β, γ, y, z + k3 * h)
-        pz = z + 1 / 6 * (k1 + 2 * k2 + 2 * k3 + k4) * h
-
-        if t > transient_drop:
-            trajectory[idx, 0] = px
-            trajectory[idx, 1] = py
-            trajectory[idx, 2] = pz
-            idx += 1
-
-        x, y, z = px, py, pz
-
-    return trajectory
-    
-    
-@njit
 def rk_solver(a: float, b: float, k: float,
               α: float, β: float, γ: float,
               x: float, y: float, z: float,
@@ -147,19 +95,19 @@ def rk_solver(a: float, b: float, k: float,
         k1 = dx_dt(a, b, k, α, x, y)
         l1 = dy_dt(k, x, y, z)
         m1 = dz_dt(k, β, γ, y, z)
-        
+
         k2 = dx_dt(a, b, k, α, x + 0.5 * h * k1, y + 0.5 * h * l1)
         l2 = dy_dt(k, x + 0.5 * h * k1, y + 0.5 * h * l1, z + 0.5 * h * m1)
         m2 = dz_dt(k, β, γ, y + 0.5 * h * l1, z + 0.5 * h * m1)
-        
+
         k3 = dx_dt(a, b, k, α, x + 0.5 * h * k2, y + 0.5 * h * l2)
         l3 = dy_dt(k, x + 0.5 * h * k2, y + 0.5 * h * l2, z + 0.5 * h * m2)
         m3 = dz_dt(k, β, γ, y + 0.5 * h * l2, z + 0.5 * h * m2)
-        
+
         k4 = dx_dt(a, b, k, α, x + h * k3, y + h * l3)
         l4 = dy_dt(k, x + h * k3, y + h * l3, z + h * m3)
         m4 = dz_dt(k, β, γ, y + h * l3, z + h * m3)
-        
+
         px = x + 1 / 6 * (k1 + 2 * k2 + 2 * k3 + k4) * h
         py = y + 1 / 6 * (l1 + 2 * l2 + 2 * l3 + l4) * h
         pz = z + 1 / 6 * (m1 + 2 * m2 + 2 * m3 + m4) * h
@@ -193,6 +141,7 @@ class AxisRange(TypedDict):
     proximity: int
 
 
+@njit(parallel=True)
 def save_data(base_path: str, diagram_data: Union[Diagram, None],
               label: str, points: np.ndarray, num: int,
               save_points=True, save_diagram=True, save_image=True):
@@ -208,8 +157,8 @@ def save_data(base_path: str, diagram_data: Union[Diagram, None],
         if not os.path.isdir(f'{base_path}/data'):
             os.makedirs(f'{base_path}/data')
         # Save data
-        with open(f'{base_path}/data/{name}.dat', 'wb') as f:
-            dump(diagram_data, f)
+        with open(f'{base_path}/data/{name}.dat', 'wb') as file:
+            dump(diagram_data, file)
 
     if save_image:
         if not os.path.isdir(f'{base_path}/images'):
@@ -225,6 +174,7 @@ def save_data(base_path: str, diagram_data: Union[Diagram, None],
         plt.close()
 
 
+@njit(parallel=True)
 def chua_integrator(diagram_data: Diagram, n_attractors: int, axis_ranges: List[AxisRange],
                     label: str, base_path='',
                     save_points=True, save_diagram=True, save_image=True):
@@ -289,13 +239,13 @@ def plot(α: float, β: float, γ: float,
     elevation, azimuth = 45, 45
 
     ax = plt.axes(projection='3d')
-
-    ax.plot3D(points[:, 0], points[:, 1], points[:, 2], 'black', linewidth=0.5)
     ax.set_axis_off()
     ax.view_init(elev=elevation, azim=azimuth)
+    ax.plot3D(points[:, 0], points[:, 1], points[:, 2], 'black', linewidth=0.5)
 
     if base_path:
         plt.savefig(f'{base_path}/{row}_{col}.png', bbox_inches='tight')
         plt.close()
     else:
         plt.show()
+
