@@ -49,16 +49,17 @@ def main():
 
     # row_start = 600
     # row_end = lyapunov_exp_mat.shape[1]
-    row_start = 0
-    row_end = 1
+    row_start = 300
+    row_end = 500
 
     # col_end = lyapunov_exp_mat.shape[1]
-    col_end = 10
+    col_start = 200
+    col_end = 400
     for i in range(row_start, row_end):
-        with tqdm_joblib(tqdm(desc=f"Row: {i}", total=col_end)) as _:
+        with tqdm_joblib(tqdm(desc=f"Row: {i}", total=col_end-col_start)) as _:
             Parallel(n_jobs=12)(
                 delayed(iteration)(β, a, b, k, init_cond, alpha_gamma_mat, i, j)
-                for j in range(col_end))
+                for j in range(col_start, col_end))
 
 
 if __name__ == '__main__':

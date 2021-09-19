@@ -4,8 +4,10 @@ from numba import njit
 import numpy as np
 from pickle import dump
 import matplotlib.pyplot as plt
+import contextlib
 from tqdm import tqdm
-# import mayavi.mlab as mlab
+import joblib
+from scipy.integrate import odeint
 
 
 @njit
@@ -141,7 +143,7 @@ class AxisRange(TypedDict):
     proximity: int
 
 
-@njit(parallel=True)
+# @njit(parallel=True)
 def save_data(base_path: str, diagram_data: Union[Diagram, None],
               label: str, points: np.ndarray, num: int,
               save_points=True, save_diagram=True, save_image=True):
@@ -174,7 +176,7 @@ def save_data(base_path: str, diagram_data: Union[Diagram, None],
         plt.close()
 
 
-@njit(parallel=True)
+# @njit
 def chua_integrator(diagram_data: Diagram, n_attractors: int, axis_ranges: List[AxisRange],
                     label: str, base_path='',
                     save_points=True, save_diagram=True, save_image=True):
@@ -249,3 +251,57 @@ def plot(α: float, β: float, γ: float,
     else:
         plt.show()
 
+
+# def save_x(α: float, β: float, γ: float,
+#            a: float, b: float, k: float,
+#            init_cond: List[float], col: int):
+#     n_steps, transient_drop = 5000, 2000
+#
+#     points = rk_solver(a, b, k, α, β, γ,
+#                        init_cond[0], init_cond[1], init_cond[2], n_steps, transient_drop)
+#
+#     np.save(f'X_axis/{col}.npy', points[:, 0])
+
+
+@contextlib.contextmanager
+def tqdm_joblib(tqdm_object):
+    """Context manager to patch joblib to report into tqdm progress bar given as argument"""
+
+    class TqdmBatchCompletionCallback(joblib.parallel.BatchCompletionCallBack):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+        def __call__(self, *args, **kwargs):
+            tqdm_object.update(n=self.batch_size)
+            return super().__call__(*args, **kwargs)
+
+    old_batch_callback = joblib.parallel.BatchCompletionCallBack
+    joblib.parallel.BatchCompletionCallBack = TqdmBatchCompletionCallback
+    try:
+        yield tqdm_object
+    finally:
+        joblib.parallel.BatchCompletionCallBack = old_batch_callback
+        tqdm_object.close()
+
+
+@njit
+def system(coords, t, a, b, k, α, β, γ):
+    x, y, z = coords
+    dydt = [dx_dt(a, b, k, α, x, y), dy_dt(k, x, y, z), dz_dt(k, β, γ, y, z)]
+    return dydt
+
+
+def save_x(α: float, β: float, γ: float,
+           a: float, b: float, k: float,
+           init_cond: List[float], col: int):
+    n_steps, transient_drop = 5000, 2000
+
+    # points = rk_solver(a, b, k, α, β, γ,
+    #                    init_cond[0], init_cond[1], init_cond[2], n_steps, transient_drop)
+
+    n_steps, transient_drop = transient(1)
+    t_values = np.arange(0, int(n_steps * 0.001), 0.001)
+
+    sol = odeint(system, init_cond, t_values, args=(a, b, k, α, β, γ))
+
+    np.save(f'X_axis/{col}.npy', sol[transient_drop:, 0])
